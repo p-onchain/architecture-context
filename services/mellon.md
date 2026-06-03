@@ -1,27 +1,29 @@
 # mellon (Auth Service)
 
-> Authentication service — Monosign replacement. Handles OIDC, session management, and token issuance.
-
-## Quick Facts
+> Authentication & identity service. OIDC, OAuth2, sessions, MFA, passkeys, SSO, API keys, and more.
 
 - **Repo:** p-blackswan/mellon
-- **Language:** Go
-- **Named after:** "Speak, friend, and enter" (Lord of the Rings)
-- **Depends on:** user-service, Redis (sessions)
+- **Lang:** Go
+- **Named after:** "Speak, friend, and enter" (LotR)
 
-## What It Does
+## Talks To
 
-1. OIDC-compliant authentication (login, token refresh, logout)
-2. Session management
-3. JWT token issuance (consumed by KrakenD for request validation)
-4. MFA flow orchestration
-5. Passkey (WebAuthn) authentication
-6. Device trust (DTT) management
+- **user-service** (gRPC) — user lookup, security settings
+- **Redis** — session storage, caches
+- **Kafka** — audit event publishing
+- **KrakenD** — validates JWTs issued by mellon
 
-## Architecture Notes
+## Capabilities
 
-- KrakenD validates JWTs issued by mellon on every request
-- Sessions stored in Redis
-- Integrates with user-service for user lookup and security settings
-- krakend-revoke-server handles token revocation propagation to KrakenD
-- revoke-relay assists with session invalidation across clusters
+Auth/identity modules (each has its own package in `internal/`):
+- OIDC, OAuth2, session, JWT issuance
+- MFA, passkey (WebAuthn), device trust
+- SSO, partner consent, API key management
+- Registration, impersonation, admin user mgmt
+- Audit logging, captcha
+
+## Key Details
+
+- krakend-revoke-server handles token revocation propagation
+- revoke-relay handles cross-cluster session invalidation
+- Clone the repo — `internal/` is well-organized, each module is self-contained

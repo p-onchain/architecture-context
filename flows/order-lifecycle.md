@@ -114,9 +114,4 @@ Client → bff → conditional-order.CreateConditionalOrder(gRPC :50052)
     → Normal order flow continues
 ```
 
-## Key Design Decisions
 
-- **Async settlement:** order-api returns immediately after submitting to match engine. Settlement happens via Kafka consumers.
-- **Exactly-once semantics:** wallet uses transaction deduplication (Redis DB 3, 24h TTL) to prevent double-settlement.
-- **Fast cancel:** Redis order cache (DB 7) shared between order-api and order-responder enables cancel without DB lookup.
-- **Per-market topics:** each market has its own Kafka topics for match/status events, enabling independent scaling.

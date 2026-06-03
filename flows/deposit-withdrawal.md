@@ -107,23 +107,8 @@
    → Produces: transaction_failed_event
 ```
 
-## Key Services Involved
+## Services Involved
 
-| Service | Role |
-|---------|------|
-| **transaction** | Orchestrates the full deposit/withdraw lifecycle |
-| **wallet** | Manages balance mutations (block, release, finalize) |
-| **onchain** | Monitors blockchain for deposits and withdrawal confirmations |
-| **custody-integration** | HSM signing for crypto withdrawals |
-| **bank-integration** | Bank API calls for fiat operations |
-| **elliptic-screener** | AML screening for crypto transactions |
-| **notification** | User notifications at each stage |
+transaction (orchestrator), wallet (balances), onchain (blockchain monitoring), custody-integration (HSM signing), bank-integration (fiat), elliptic-screener (AML), notification (user alerts)
 
-## Transaction Events (Kafka)
-
-All events in `proto/transaction/event/v1/`:
-- `transaction_event` (envelope)
-- Crypto: `crypto_deposit_created`, `crypto_deposit_verified`, `crypto_transaction_created`, `crypto_transaction_signed`, `crypto_transaction_verified`, `crypto_transaction_rejected`
-- Fiat: `fiat_deposit_created`, `fiat_transaction_created`, `fiat_transaction_verified`, `fiat_instant_deposit_verified`
-- Generic: `transaction_started`, `transaction_canceled`, `transaction_failed`
-- Special: `staking_reward_deposited`, `admin_crypto_withdraw_created`, `admin_fiat_withdraw_created`
+Event protos: `proto/transaction/event/v1/` in proto-hub
