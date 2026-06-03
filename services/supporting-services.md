@@ -120,6 +120,17 @@
 - **Deployed as:** gopanel-backend, gopanel-frontend, gopanel-example-service
 - **Also:** gopanel-marketing-backend, gopanel-marketing-frontend
 
+## block-listener
+- **Repo:** p-blackswan/block-listener
+- **Purpose:** Blockchain event listener — monitors on-chain events for deposit detection and transaction confirmation
+- **Notes:** Works with custody-integration and transaction service for the deposit pipeline
+
+## eventificator
+- **Repo:** p-blackswan/eventificator
+- **Purpose:** Platform-wide event archival. Produces `archive.transaction-events` Kafka topic with both pre-cutover synthesized history (from financial-history Postgres) and post-cutover verbatim mirror (from live `transaction-events` topic)
+- **Deployed as:** eventificator-backfill (historical synthesis), eventificator-mirror (live mirroring)
+- **Notes:** Part of the Eventification project — unifying historical and live transaction events into a single Kafka topic
+
 ## market-api
 - **Repo:** p-blackswan/market-api
 - **Purpose:** Market metadata API (generates market-configs YAML)

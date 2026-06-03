@@ -32,6 +32,13 @@
 | **Notification** | notification-api |
 | **Config** | config-service (HTTP REST) |
 
+## Additional Integrations
+
+- **tickbu** — support ticket system integration (create, list, get, close tickets, add messages). HTTP REST calls to Tickbu API.
+- **consent** — user consent management endpoints
+- **notification** — notification preferences and delivery
+- **pnl** — profit & loss data aggregation for portfolio views
+
 ## Kafka
 
 - Does NOT consume or produce Kafka messages directly

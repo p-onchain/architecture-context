@@ -4,10 +4,10 @@
 
 ## Quick Facts
 
-- **Repo:** p-blackswan/match
+- **Repo:** p-blackswan/match-core
 - **Language:** Go
 - **Port:** gRPC :50059
-- **DB:** None (stateful in-memory, snapshots to S3)
+- **DB:** None (stateful in-memory). Persistence via Redpanda WAL; S3 snapshots planned but not yet implemented.
 - **One instance per market** (e.g., `match-btc-try`, `match-eth-try`)
 
 ## What It Does
@@ -45,8 +45,8 @@ ArgoCD watches market-configs and generates one Deployment per enabled market YA
 
 ## Architecture Notes
 
-- **Stateful** — order book lives in memory. Recovery via S3 snapshots + Kafka replay
+- **Stateful** — order book lives in memory. Recovery via Redpanda WAL replay (S3 snapshots are a planned TODO)
 - Each instance is single-threaded for the order book (no locking needed)
-- Snapshot interval is configurable per market (default: 5m or every 1000 operations)
+- Uses Redpanda as a write-ahead log for durability
 - Match events use Protobuf + Schema Registry serialization
 - match-forge persists match events to PostgreSQL as an append-only event store
