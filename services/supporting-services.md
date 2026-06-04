@@ -1,160 +1,83 @@
 # Supporting Services
 
-> Grouped reference for smaller/supporting services that don't need individual deep-dive docs.
+> Quick reference for supporting/smaller services. For details, clone the repo.
 
 ---
 
-## order-responder
-- **Repo:** p-blackswan/order-responder
-- **Purpose:** Aggregates match and status events from Kafka, builds order response for fast-cancel flow
-- **Consumes:** `order.events.match` (all markets), `order.events.status` (all markets)
-- **Redis:** DB 7 (shared order cache with order-api)
-- **Notes:** Scales horizontally via shared Kafka consumer group. Cooperative-sticky rebalance.
+## Trading Support
 
-## match-forge
-- **Repo:** p-blackswan/match-forge
-- **Purpose:** Event persistence — consumes match engine events from Redpanda, writes as append-only event store to PostgreSQL
-- **DB:** PostgreSQL (`match_forge`), with S3 archival (partitioned, daily rotation)
-- **Notes:** Internal HTTP API gated by token for commission-cost-tracker. Archiver feature for old data → S3 + Glue.
+**order-responder** — Aggregates match/status events from Kafka, builds order response for fast-cancel flow. Shares Redis order cache (DB 7) with order-api.
 
-## conditional-order
-- **Repo:** p-blackswan/conditional-order
-- **Purpose:** Stop-loss, take-profit, and other conditional order triggers
-- **Port:** gRPC :50052
-- **Consumes:** `orderbook.match_price` (trigger evaluation), `order.events.status` (order tracking)
-- **Calls:** order-api (gRPC :60060) to submit triggered orders
-- **DB:** PostgreSQL (`conditional_orders`), Redis DB 6
+**match-forge** — Persists match events from Redpanda to PostgreSQL as append-only event store. S3 archival for old data.
 
-## config-service
-- **Repo:** p-blackswan/config-service
-- **Purpose:** Dynamic configuration management (market params, limits, feature toggles)
-- **Produces:** `config-service-events` to Kafka
-- **Deployed as:** config-service + config-service-worker
-- **Notes:** HTTP REST API (not gRPC). Consumed by order-api and read-mono.
+**conditional-order** (gRPC :50052) — Stop-loss, take-profit, conditional triggers. Consumes `orderbook.match_price`, calls order-api to submit triggered orders.
 
-## notification / notif2
-- **Repo:** p-blackswan/notification, p-blackswan/notif2
-- **Purpose:** Multi-channel notification delivery (push, SMS, email, in-app)
-- **notif2:** Newer notification service replacing legacy notification
-- **Deployed as:** notification-api + notification-worker (or notify-api + notify-iys-worker)
-- **Notes:** notification-command handles DLQ + bulk push campaigns
+## Config & Feature Management
 
-## alarm-service
-- **Repo:** p-blackswan/alarm-service
-- **Purpose:** User-defined price alarms and custom alert rules
-- **Deployed as:** alarms-server, alarm-query, quick-alarms-worker, custom-alarms-worker
+**config-service** — Dynamic config management. Produces `config-service-events` to Kafka. HTTP REST API (not gRPC).
 
-## campaign-service
-- **Repo:** p-blackswan/campaign-service
-- **Purpose:** Promotions, coupon campaigns, referral rewards
-- **Deployed as:** campaign-service, campaign-projection, campaign-query, campaign-outbox-worker
-- **Events:** campaign created/updated/status changed, coupon claimed/uploaded/withdrawn
+**feature-flags** — YAML-based feature flag definitions consumed by flagd/OpenFeature.
 
-## staking-service
-- **Repo:** p-blackswan/staking-service
-- **Purpose:** Pool-based crypto staking (create pools, stake, redeem, distribute rewards)
-- **Deployed as:** staking-service, staking-query, staking-distributor
-- **Proto:** v1 and v2 versions (v2 adds APR management, more event types)
+**market-configs** — YAML per market definition. ArgoCD watches and generates Deployments.
 
-## invoice-service
-- **Repo:** p-blackswan/invoice-service
-- **Purpose:** Invoice generation for trades and transactions
-- **Deployed as:** invoice-service-api, invoice-service-worker
+## Notification
 
-## bank-integration
-- **Repo:** p-blackswan/bank-integration
-- **Purpose:** Bank API integration for fiat deposits/withdrawals
-- **Deployed as:** bank-integration, bank-integration-query, bank-integration-proxy, bank-integration-mock
+**notif2** / **notification** — Multi-channel delivery (push, SMS, email, in-app). notif2 is the newer version.
 
-## custody-integration
-- **Repo:** p-blackswan/custody-integration
-- **Purpose:** HSM/custody signing bridge for crypto transactions
-- **Deployed as:** custody-integration, custody-integration-query
+**alarm-service** — User-defined price alarms and custom alert rules.
 
-## reconciliation
-- **Repo:** p-blackswan/reconciliation
-- **Purpose:** Balance reconciliation between wallet, ledger, and external sources
-- **Deployed as:** reconciliation-server, reconciliation-job
+## Finance & Compliance
 
-## sanctions / elliptic-screener
-- **Repo:** p-blackswan/sanctions, p-blackswan/elliptic-screener
-- **Purpose:** AML/compliance screening, sanctions list checking
-- **Deployed as:** sanctions, elliptic-screener-scheduler, elliptic-screener-worker
+**commission-update-worker** — Consumes `user-commission-events`, writes rates to Redis for wallet.
 
-## commission-update-worker
-- **Repo:** p-blackswan/commission-update-worker
-- **Purpose:** Consumes CommissionEvent from Kafka, writes commission rates to Redis hash
-- **Consumes:** `user-commission-events`
-- **Redis:** DB 2 (commission_rates hash, read by wallet)
+**bank-integration** — Bank API integration for fiat operations.
 
-## commission-cost-tracker
-- **Repo:** p-blackswan/commission-cost-tracker
-- **Purpose:** Tracks commission costs per trade for financial reporting
+**custody-integration** — HSM/custody signing bridge for crypto transactions.
 
-## global-price-tracker
-- **Repo:** p-blackswan/global-price-tracker
-- **Purpose:** Fetches and serves global crypto prices from external sources
-- **Deployed as:** global-price-tracker-api, global-price-tracker-worker
+**elliptic-screener** — AML/compliance screening.
 
-## heimdall
-- **Repo:** p-blackswan/heimdall (Rust)
-- **Purpose:** Domain-agnostic external data hub. Fetches, validates, stores, caches, and serves data from external sources (CoinGecko, sentiment indices, etc.)
-- **Port:** gRPC :50099
-- **Notes:** Written in Rust. API-key authentication required in non-local environments.
+**sanctions** — Sanctions list checking.
 
-## ws-hub
-- **Repo:** p-blackswan/ws-hub
-- **Purpose:** WebSocket hub for streaming real-time data to web/mobile clients (legacy)
-- **Notes:** JWT-based auth. Being supplemented by wapi for API-key clients.
+**invoice-service** — Invoice generation for trades/transactions.
 
-## wapi
-- **Repo:** p-blackswan/wapi
-- **Purpose:** Low-latency WebSocket service for API-key trading clients
-- **Architecture:** Consumes directly from internal Redpanda (not via MSK bridge)
-- **Auth:** API-key on /v1/user (KrakenD validates), anonymous on /v1/stream
-- **Notes:** Independent of ws-hub. Hexagonal architecture.
+## Blockchain
 
-## gopanel
-- **Repo:** p-blackswan/gopanel
-- **Purpose:** Back-office admin panel
-- **Deployed as:** gopanel-backend, gopanel-frontend, gopanel-example-service
-- **Also:** gopanel-marketing-backend, gopanel-marketing-frontend
+**block-listener** — Blockchain event listener for deposit detection and tx confirmation.
 
-## block-listener
-- **Repo:** p-blackswan/block-listener
-- **Purpose:** Blockchain event listener — monitors on-chain events for deposit detection and transaction confirmation
-- **Notes:** Works with custody-integration and transaction service for the deposit pipeline
+**onchain** (TypeScript) — Blockchain monitoring, deposit detection.
 
-## eventificator
-- **Repo:** p-blackswan/eventificator
-- **Purpose:** Platform-wide event archival. Produces `archive.transaction-events` Kafka topic with both pre-cutover synthesized history (from financial-history Postgres) and post-cutover verbatim mirror (from live `transaction-events` topic)
-- **Deployed as:** eventificator-backfill (historical synthesis), eventificator-mirror (live mirroring)
-- **Notes:** Part of the Eventification project — unifying historical and live transaction events into a single Kafka topic
+## Staking & Campaign
 
-## market-api
-- **Repo:** p-blackswan/market-api
-- **Purpose:** Market metadata API (generates market-configs YAML)
+**staking-service** — Pool-based crypto staking (create, stake, redeem, distribute rewards).
 
-## feature-flags
-- **Repo:** p-blackswan/feature-flags
-- **Purpose:** YAML-based feature flag definitions (consumed by flagd/OpenFeature)
+**campaign-service** — Promotions, coupon campaigns, referral rewards.
 
-## input-validator
-- **Repo:** p-blackswan/input-validator
-- **Purpose:** gRPC service for validating user inputs (addresses, amounts, etc.)
+## Events & Data
 
-## recurring-api
-- **Repo:** p-blackswan/recurring-api
-- **Purpose:** Recurring buy (DCA) service — CQRS + Event Sourcing
+**eventificator** — Transaction event archival. Produces `archive.transaction-events` topic (synthesized history + live mirror).
 
-## partner-integration
-- **Repo:** p-blackswan/partner-integration
-- **Purpose:** External partner integrations (Besiktas, Mohikan)
+**global-price-tracker** — Fetches/serves global crypto prices from external sources.
 
-## kep-service
-- **Repo:** p-blackswan/kep-service
-- **Purpose:** KEP (legal registered email) integration for the legal department
+**heimdall** (Rust, gRPC :50099) — External data hub (CoinGecko, sentiment indices, etc.).
 
-## mkk
-- **Repo:** p-blackswan/mkk
-- **Purpose:** MKK (Merkezi Kayıt Kuruluşu) integration for regulatory reporting
+## Real-time
+
+**ws-hub** — WebSocket hub for web/mobile clients. JWT auth.
+
+**wapi** — Low-latency WebSocket for API-key traders. Direct Redpanda consumption. See `clients/wapi.md`.
+
+## Admin
+
+**gopanel** (pikachu-exchange) — Back-office admin panel. Go backend + Vue frontend.
+
+## Integration
+
+**recurring-api** — Recurring buy (DCA) service, CQRS + Event Sourcing.
+
+**partner-integration** — External partner integrations.
+
+**kep-service** — KEP (legal registered email) integration.
+
+**mkk** — MKK regulatory reporting integration.
+
+**input-validator** (gRPC :50081) — Input validation service (addresses, amounts, etc.).

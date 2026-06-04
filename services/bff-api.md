@@ -1,57 +1,30 @@
 # bff-api
 
-> Backend-for-Frontend serving the web client. Gateway proxy that aggregates gRPC microservices into HTTP/JSON responses.
-
-## Quick Facts
+> Backend-for-Frontend for the web client. Aggregates gRPC microservices into HTTP/JSON.
 
 - **Repo:** p-blackswan/bff-api
-- **Language:** Go
+- **Lang:** Go
 - **Port:** HTTP :3001
-- **DB:** None (stateless proxy)
-- **Sits behind:** KrakenD Gateway
+- **Stateless proxy** — no DB
 
-## What It Does
+## Talks To
 
-1. Receives HTTP requests from KrakenD (which handles JWT validation)
-2. Fans out to downstream gRPC microservices
-3. Aggregates responses into client-shaped JSON
-4. Returns to KrakenD → client
+Sits behind KrakenD, fans out to downstream gRPC services:
+- **Trading:** order-api, conditional-order, open-order-query
+- **User:** user-service, user-query, user-state-query
+- **Balance:** balance-query, wallet
+- **Transaction:** transaction, transaction-query
+- **Market Data:** ticker-query, klines-query, global-price-tracker, orderbook-query
+- **Finance:** commission-api, financial-history-query, pnl-query
+- **Features:** alarm-query, favourite-query, feedback-query, input-validator
+- **Staking:** staking-command, staking-query
+- **Notification:** notification-api
+- **Config:** config-service (HTTP REST)
+- **Support:** tickbu (HTTP REST — support ticket system)
 
-## Downstream gRPC Services
+## Key Details
 
-| Category | Services |
-|----------|----------|
-| **Order** | order-api (HTTP :9000), conditional-order (:50052), open-order-query |
-| **User** | user-service, user-query, user-state-query |
-| **Balance** | balance-query, wallet |
-| **Transaction** | transaction, transaction-query |
-| **Market Data** | ticker-query, klines-query, global-price-tracker, orderbook-query |
-| **Finance** | commission-api, financial-history-query, pnl-query |
-| **Features** | alarm-query, favourite-query, feedback-query, input-validator |
-| **Staking** | staking-command, staking-query |
-| **Notification** | notification-api |
-| **Config** | config-service (HTTP REST) |
-
-## Additional Integrations
-
-- **tickbu** — support ticket system integration (create, list, get, close tickets, add messages). HTTP REST calls to Tickbu API.
-- **consent** — user consent management endpoints
-- **notification** — notification preferences and delivery
-- **pnl** — profit & loss data aggregation for portfolio views
-
-## Kafka
-
-- Does NOT consume or produce Kafka messages directly
-
-## Architecture Notes
-
-- Stateless — purely a proxy/aggregation layer
-- Uses feature flags (flagd/OpenFeature) for progressive rollouts
-- Redis used for MFA session state
-- Same env var naming convention as bff-client for downstream services
-- Config service accessed via HTTP REST (not gRPC)
-
-## Related
-
-- **bff-client** — same pattern but for the mobile app (Samaritan). Slightly different response shapes optimized for mobile.
-- **krakend-gateway** — sits in front, handles JWT validation, rate limiting, API-key auth
+- No Kafka — purely a proxy/aggregation layer
+- Uses feature flags (flagd/OpenFeature)
+- Redis for MFA session state
+- bff-client is the same pattern but for mobile (Samaritan)

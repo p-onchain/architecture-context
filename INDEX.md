@@ -1,140 +1,67 @@
 # BlackSwan Exchange — Architecture Context
 
-> Lightweight overview for AI coding agents. Read this first.
-> For details on a specific service, see `services/<name>.md`.
-> For end-to-end flows, see `flows/`.
+> Lightweight service map for AI coding agents. Tells you WHERE to find things, not HOW they work internally — clone the repo and read the code for that.
 
 ## System Overview
 
-BlackSwan is a crypto exchange platform (Paribu v6) built as Go microservices with CQRS/Event Sourcing. Services communicate via gRPC (sync) and Redpanda/Kafka (async). All services are deployed on Kubernetes (EKS) via ArgoCD GitOps.
+BlackSwan is a crypto exchange platform (Paribu v6). Go microservices, CQRS/Event Sourcing, gRPC (sync) + Redpanda/Kafka (async). Deployed on Kubernetes (EKS) via ArgoCD GitOps.
 
-## Domain Map
+## Service Map
 
-| Domain | Services | Purpose |
-|--------|----------|---------|
-| **Trading** | order-api, match-core, order-responder, conditional-order, match-forge | Order entry, matching, response aggregation, conditional triggers, event persistence |
-| **Wallet** | wallet, wallet-ledger-sink, wallet-validator, wallet-asset-cleanup | Balance management, ledger persistence, validation, cleanup |
-| **Transaction** | transaction, onchain | Crypto/fiat deposit & withdraw, blockchain monitoring |
-| **User** | user-service, mellon (auth) | User management, KYC, auth (OIDC/passkeys) |
-| **Market Data** | global-price-tracker, market-api, market-configs | External prices, market metadata, per-market config (GitOps) |
-| **Notification** | notif2, notification | Push/SMS/email/in-app delivery |
-| **Admin** | gopanel, config-service, feature-flags | Back-office UI, dynamic config, feature toggles |
-| **Compliance** | sanctions, elliptic-screener, custody-integration, reconciliation | AML screening, custody, reconciliation |
-| **Finance** | invoice-service, bank-integration, commission-update-worker, commission-cost-tracker | Invoicing, bank integration, commission processing |
-| **Staking** | staking-service | Pool-based crypto staking |
-| **Campaign** | campaign-service | Promotions, coupon campaigns |
-| **Read Models (CQRS)** | read-mono (monorepo) | ~25 projection/query pairs for all domains |
-| **Gateway** | krakend-gateway, bff-api, bff-client | API gateway, BFF for web, BFF for mobile |
-| **Real-time** | ws-hub, wapi | WebSocket streaming for web/mobile, API-key WS for traders |
-| **Observability** | observer (lib), alarm-service | Shared OTEL lib, price/custom alarms |
-| **Infrastructure** | blackswan-gitops, blackswan-infrastructure, blackswan-helm-base | GitOps (ArgoCD), Terraform/Terragrunt, Helm base chart |
+| Domain | Services | Repos |
+|--------|----------|-------|
+| **Trading** | Order entry, matching engine, response aggregation, conditional triggers, event persistence | order-api, match-core, order-responder, conditional-order, match-forge |
+| **Wallet** | Balance management, ledger persistence, validation | wallet, wallet-ledger-sink, wallet-validator, wallet-outbox |
+| **Transaction** | Crypto/fiat deposit & withdraw, blockchain monitoring | transaction, block-listener, onchain (TS) |
+| **User & Auth** | User management, KYC, auth (OIDC/OAuth2/passkeys/SSO) | user-service, mellon |
+| **Market Data** | External prices, market metadata, per-market config | global-price-tracker, market-api, market-configs |
+| **Notification** | Push/SMS/email/in-app delivery | notif2, notification |
+| **Admin** | Back-office UI, dynamic config, feature toggles | gopanel, config-service, feature-flags |
+| **Compliance** | AML screening, custody, reconciliation | sanctions, elliptic-screener, custody-integration |
+| **Finance** | Invoicing, bank integration, commission processing | invoice-service, bank-integration, commission-update-worker |
+| **Staking** | Pool-based crypto staking | staking-service |
+| **Campaign** | Promotions, coupon campaigns | campaign-service |
+| **Read Models** | ~25 CQRS projection/query pairs for all domains | read-mono (monorepo) |
+| **Gateway** | API gateway, BFF for web, BFF for mobile | krakend-gateway, bff-api, bff-client |
+| **Real-time** | WebSocket streaming | ws-hub (web/mobile), wapi (API-key traders) |
+| **Events** | Transaction event archival/mirroring | eventificator |
+| **Infra** | GitOps, Terraform, Helm | blackswan-gitops, blackswan-infrastructure, platform-gitops, platform-terraform |
 
-## Request Flow (Simplified)
+All core service repos are under **p-blackswan** org unless noted otherwise.
+
+## Request Flow
 
 ```
-Client (Samaritan/Web)
-  → KrakenD Gateway (JWT validation, rate limiting, routing)
+Client (Samaritan / Web / WAPI)
+  → KrakenD Gateway (JWT validation, rate limiting, API-key auth)
     → BFF (bff-api for web, bff-client for mobile)
-      → gRPC microservices (order-api, wallet, user-service, etc.)
+      → gRPC microservices
         → Redpanda/Kafka (async events)
-          → read-mono projections (update query stores)
-            → query services (serve read requests back to BFF)
+          → read-mono projections → query services → back to BFF
 ```
 
 ## Trading Flow (Core Path)
 
 ```
-bff → order-api (HTTP :9000 + gRPC :60060)
-        → wallet (gRPC :50058) — reserve funds
-        → match-core-{market} (gRPC :50059) — submit to matching engine
-            ↓ (Kafka: order.events.match.{market}, order.events.status.{market})
-        → order-responder — aggregates match/status events, builds response
-        → wallet — settles trades (consumes match events)
-            ↓ (Kafka: ledger-logs)
-        → wallet-ledger-sink — persists ledger to PostgreSQL
-        → match-forge — persists match events to PostgreSQL
+bff → order-api → wallet (reserve funds) → match-core-{market} (match)
+  ↓ Kafka: order.events.match.{market}, order.events.status.{market}
+  → wallet (settle trades) → ledger-logs → wallet-ledger-sink
+  → order-responder (aggregate response)
+  → match-forge (persist match events)
+  → read-mono projections (orderbook, ticker, balance, etc.)
 ```
 
 ## Key Kafka Topics
 
-| Topic Pattern | Producer | Consumers | Schema |
-|---------------|----------|-----------|--------|
-| `order.events.match.{market}` | match engine | wallet, order-responder, match-forge, read-mono | Protobuf (Schema Registry) |
-| `order.events.status.{market}` | match engine | order-responder, conditional-order, read-mono | Protobuf |
-| `ledger-logs` | wallet | wallet-ledger-sink, read-mono (balance, financial-history) | Protobuf |
-| `user-commission-events` | commission system | commission-update-worker, wallet | Protobuf |
-| `orderbook.match_price` | match engine | order-api, conditional-order, read-mono (ticker) | Protobuf |
-| `orderbook.state` | match engine | read-mono (orderbook) | Protobuf |
-| `config-service-events` | config-service | order-api, read-mono | Protobuf |
-| `external.ledger-logs` | redpanda-connect (mirror) | pikachu-exchange consumers | Protobuf |
-| `external.commission` | redpanda-connect (mirror) | pikachu-exchange consumers | Protobuf |
-
-## Key gRPC Service Ports (Local Dev)
-
-| Service | gRPC Port | HTTP Port | Notes |
-|---------|-----------|-----------|-------|
-| order-api | :60060 | :9000 | Both HTTP and gRPC |
-| wallet | :50058 | — | |
-| match-{market} | :50059 | — | One instance per market |
-| conditional-order | :50052 | — | |
-| bff-api | — | :3001 | HTTP only, calls gRPC downstream |
-| bff-client | — | :8080 | HTTP only, calls gRPC downstream |
-| user-service | :50074 | — | Command + Query |
-| ticker-query | :50073 | — | |
-| balance-query | :50070 | — | |
-| financial-history-query | :50071 | — | |
-| klines-query | :50072 | — | |
-| orderbook-query | :50075 | — | |
-| transaction | :50076 | — | |
-| commission-api | :50077 | — | |
-| uservolume-query | :50078 | — | |
-| global-price-tracker | :50079 | — | |
-| notification-api | :50080 | — | |
-| input-validator | :50081 | — | |
-| transaction-query | :50082 | — | |
-| user-state-query | :50084 | — | |
-| favourite-query | :50086 | — | |
-| open-order-query | :50087 | — | |
-| heimdall | :50099 | — | External data hub (Rust) |
-
-## Shared Libraries
-
-| Library | Repo | Purpose |
-|---------|------|---------|
-| **corekit** | p-blackswan/corekit | Standard Go toolkit — DB (Postgres/Redis/ClickHouse), Kafka consumer/producer, gRPC client/interceptors, env config, error handling, retry, logging, worker patterns |
-| **observer** | p-blackswan/observer | Shared observability — OTLP exporters, Pyroscope profiling, metrics/tracing setup |
-| **proto-hub** | p-blackswan/proto-hub | Central protobuf definitions + generated Go code for all service contracts |
-| **feature-flags-go** | p-blackswan/feature-flags-go | Feature flag client library |
-| **fixedpoint** | p-blackswan/fixedpoint | Decimal arithmetic for financial calculations |
-
-## Infrastructure
-
-- **Cloud:** AWS (multi-account via Terragrunt)
-- **Kubernetes:** EKS clusters managed via ArgoCD
-- **Messaging:** Redpanda (internal, Kafka-compatible) + MSK (external bridge)
-- **Databases:** PostgreSQL (primary), ClickHouse (analytics), Redis (cache/state)
-- **Schema Registry:** Redpanda Schema Registry (Protobuf schemas)
-- **Gateway:** KrakenD (with custom Go plugins for API-key auth + request logging)
-- **Observability:** SigNoz (traces/logs), VictoriaMetrics (metrics), Pyroscope (profiling), Grafana (dashboards)
-- **CI/CD:** GitHub Actions (shared-workflows) → Docker → ArgoCD GitOps
-- **Feature Flags:** flagd (OpenFeature) via feature-flags repo (YAML)
-- **Secrets:** HashiCorp Vault
-
-## CQRS Pattern (read-mono)
-
-BlackSwan uses CQRS extensively. Write services (wallet, user-service, transaction, etc.) emit events to Kafka. The `read-mono` monorepo contains ~25 projection/query service pairs:
-
-Each domain in read-mono has:
-- **projection** — Kafka consumer that builds a read-optimized view in PostgreSQL/ClickHouse
-- **query** — gRPC server that serves the read-optimized view
-
-Domains in read-mono: alarm, anomaly-detection, balance, bank-integration, campaign, commission, cost-basis, custody-integration, favourite, feedback, financial-history, klines, open-order, orderbook, orderbook-wapi, pass, pnl, pnl-agg, staking, ticker, transaction, user, user-state, uservolume, ws
-
-## Match Engine Topology
-
-Each market (e.g., `btc-try`, `eth-try`, `sol-try`) runs as a separate match-core instance. Market definitions are in `p-blackswan/market-configs` (GitOps — YAML per market). ArgoCD generates one Deployment per market YAML file. The repo is `p-blackswan/match-core`.
-
-Match engines are stateful — they maintain an in-memory order book and produce events to per-market Kafka topics (`order.events.match.{market}`, `order.events.status.{market}`).
+| Topic Pattern | Producer → Consumers |
+|---------------|---------------------|
+| `order.events.match.{market}` | match-core → wallet, order-responder, match-forge, read-mono |
+| `order.events.status.{market}` | match-core → order-responder, conditional-order, read-mono |
+| `ledger-logs` | wallet → wallet-ledger-sink, read-mono |
+| `orderbook.match_price` | match-core → order-api, conditional-order, read-mono |
+| `orderbook.state` | match-core → read-mono (orderbook) |
+| `config-service-events` | config-service → order-api, read-mono |
+| `user-commission-events` | commission → commission-update-worker, wallet |
 
 ## Client Applications
 
@@ -142,25 +69,43 @@ Match engines are stateful — they maintain an in-memory order book and produce
 |--------|------|-------|-----|
 | **Samaritan** (mobile) | pikachu-exchange/samaritan | React Native (Expo) | bff-client |
 | **Web** | p-blackswan/web | Vue.js | bff-api |
-| **WAPI** (trading API) | p-blackswan/wapi | Go WebSocket server | Direct (API-key auth via KrakenD) |
-| **Desktop** | p-utilities/prb-desktop | Vue (Electron/Tauri) | bff-api |
-| **GoPanel** (admin) | p-blackswan/gopanel | Go backend + Vue frontend | Direct (internal) |
+| **WAPI** (trading API) | p-blackswan/wapi | Go WebSocket | Direct (API-key via KrakenD) |
+| **GoPanel** (admin) | pikachu-exchange/gopanel | Go + Vue | Direct |
 
-For client-specific details, see `clients/`.
+## Shared Libraries
 
-## GitHub Organizations
+| Library | Repo | What it gives you |
+|---------|------|-------------------|
+| **corekit** | p-blackswan/corekit | DB, Kafka, gRPC, config, error handling, worker patterns |
+| **proto-hub** | p-blackswan/proto-hub | All protobuf definitions + generated Go code |
+| **observer** | p-blackswan/observer | OTEL exporters, Pyroscope, metrics/tracing |
+| **fixedpoint** | p-blackswan/fixedpoint | Decimal arithmetic for financial calculations |
 
-| Org | Purpose |
-|-----|---------|
-| **p-blackswan** | Core exchange services, infrastructure, shared libs |
-| **pikachu-exchange** | Mobile app (Samaritan), legacy services, financial-history |
-| **p-utilities** | Internal tools, KYC, charting, storybook, SDK packages |
+## Infrastructure
 
-## How to Use This Context Pack
+- **Cloud:** AWS (multi-account, Terragrunt)
+- **K8s:** EKS + ArgoCD
+- **Messaging:** Redpanda (Kafka-compatible)
+- **DB:** PostgreSQL (primary), ClickHouse (analytics), Redis (cache)
+- **Gateway:** KrakenD + custom Go plugins
+- **Observability:** SigNoz (traces/logs), VictoriaMetrics (metrics), Pyroscope (profiling)
+- **CI/CD:** GitHub Actions → Docker → ArgoCD
+- **Feature Flags:** flagd (OpenFeature)
+- **Secrets:** HashiCorp Vault
 
-If you're an AI agent working on a specific service:
-1. Read this INDEX.md for the big picture
-2. Read `services/<service-name>.md` for the service you're working on
-3. Read `flows/<relevant-flow>.md` if you need to understand an end-to-end process
-4. Read `conventions.md` for coding standards and patterns
-5. Check `proto-hub` for the exact gRPC contract definitions
+## GitHub Orgs
+
+| Org | What's there |
+|-----|-------------|
+| **p-blackswan** | Core exchange services, infra, shared libs |
+| **pikachu-exchange** | Mobile app (Samaritan), gopanel, legacy services |
+| **p-utilities** | Internal tools, KYC SDK, charting, storybook |
+| **p-onchain** | On-chain/DeFi related services |
+
+## How to Use This
+
+1. Read this INDEX for the big picture
+2. Read `services/<name>.md` for the service you're touching — it tells you what it talks to
+3. Read `flows/<flow>.md` if you need an end-to-end process
+4. Read `conventions.md` for coding standards
+5. **Clone the repo and read the code** for implementation details
