@@ -19,7 +19,7 @@
 
 ## Key Details
 
-- Stateful — order book in memory, persistence via Redpanda WAL
+- Stateful — order book in memory, persistence via Redpanda WAL (S3 snapshots planned but not yet implemented)
 - No external DB dependency
 - Market definitions in `p-blackswan/market-configs` (YAML, GitOps)
 - ArgoCD generates one Deployment per market YAML
