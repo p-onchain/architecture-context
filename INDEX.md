@@ -12,7 +12,7 @@ BlackSwan is a crypto exchange platform (Paribu v6) built as Go microservices wi
 
 | Domain | Services | Purpose |
 |--------|----------|---------|
-| **Trading** | order-api, match, order-responder, conditional-order, match-forge | Order entry, matching, response aggregation, conditional triggers, event persistence |
+| **Trading** | order-api, match-core, order-responder, conditional-order, match-forge | Order entry, matching, response aggregation, conditional triggers, event persistence |
 | **Wallet** | wallet, wallet-ledger-sink, wallet-validator, wallet-asset-cleanup | Balance management, ledger persistence, validation, cleanup |
 | **Transaction** | transaction, onchain | Crypto/fiat deposit & withdraw, blockchain monitoring |
 | **User** | user-service, mellon (auth) | User management, KYC, auth (OIDC/passkeys) |
@@ -46,7 +46,7 @@ Client (Samaritan/Web)
 ```
 bff → order-api (HTTP :9000 + gRPC :60060)
         → wallet (gRPC :50058) — reserve funds
-        → match-{market} (gRPC :50059) — submit to matching engine
+        → match-core-{market} (gRPC :50059) — submit to matching engine
             ↓ (Kafka: order.events.match.{market}, order.events.status.{market})
         → order-responder — aggregates match/status events, builds response
         → wallet — settles trades (consumes match events)
@@ -132,7 +132,7 @@ Domains in read-mono: alarm, anomaly-detection, balance, bank-integration, campa
 
 ## Match Engine Topology
 
-Each market (e.g., `btc-try`, `eth-try`, `sol-try`) runs as a separate match engine instance. Market definitions are in `p-blackswan/market-configs` (GitOps — YAML per market). ArgoCD generates one Deployment per market YAML file.
+Each market (e.g., `btc-try`, `eth-try`, `sol-try`) runs as a separate match-core instance. Market definitions are in `p-blackswan/market-configs` (GitOps — YAML per market). ArgoCD generates one Deployment per market YAML file. The repo is `p-blackswan/match-core`.
 
 Match engines are stateful — they maintain an in-memory order book and produce events to per-market Kafka topics (`order.events.match.{market}`, `order.events.status.{market}`).
 

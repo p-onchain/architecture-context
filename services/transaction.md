@@ -59,6 +59,38 @@ Produces extensive transaction lifecycle events:
 
 All events defined in `proto/transaction/event/v1/`.
 
+## Internal Modules
+
+The transaction service is one of the largest services, with many specialized modules:
+
+```
+transaction/internal/
+├── adapters/                      # External service adapters (wallet, custody, bank gRPC clients)
+├── address/                       # Deposit address management
+├── app/                           # Application bootstrap
+├── blockedbalancescanner/         # Scans for stuck blocked balances (deposit edge cases)
+├── crypto/                        # Crypto deposit/withdraw domain logic
+├── dailyticker/                   # Daily ticker snapshots for reporting
+├── fiat/                          # Fiat deposit/withdraw domain logic
+├── fraud/                         # Fraud detection and scoring
+├── ledgeroutbox/                  # Outbox pattern for ledger events
+├── mfa/                           # MFA verification for withdrawals
+├── outbox/                        # Generic outbox pattern
+├── platform/                      # Platform-level concerns
+├── promotion/                     # Deposit promotion campaigns
+├── ptravelnotify/                 # Travel rule notification (compliance)
+├── shared/                        # Shared models and utilities
+├── staking/                       # Staking reward deposit handling
+├── suspicioustransactionwatcher/  # Monitors and flags suspicious transactions
+├── treasurybalance/               # Treasury balance tracking and alerts
+├── txvalidator/                   # Transaction validation rules
+├── unclaimedrefund/               # Handles unclaimed refund processing
+├── unified/                       # Unified transaction view across crypto/fiat
+├── user/                          # User-specific transaction settings
+├── validation/                    # Input validation
+└── withdrawholdreminder/          # Reminder for held withdrawals (compliance)
+```
+
 ## Deployed Components
 
 - **transaction** — main command service
