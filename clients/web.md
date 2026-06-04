@@ -4,7 +4,7 @@
 
 - **Repo:** p-blackswan/web
 - **Stack:** Vue.js
-- **BFF:** bff-api (:3001) via KrakenD
+- **BFF:** bff-api (:3000) via KrakenD
 - **Real-time:** ws-hub (WebSocket)
 
 ## Related

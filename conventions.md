@@ -61,9 +61,8 @@ Every Go service typically imports:
 - BFF pattern: `bff-api` (web), `bff-client` (mobile)
 
 ### Kafka Topics
-- Match events: `order.events.match.{market}` (e.g., `order.events.match.btc-try`)
-- Status events: `order.events.status.{market}`
-- Orderbook: `orderbook.state`, `orderbook.match_price`
+- Match/status/orderbook events are **shared, un-suffixed** topics — consumers filter by market from the message payload, NOT by topic name: `order.events.match`, `order.events.status`, `orderbook.state`, `orderbook.match_price`
+- The match-engine **WAL** topic IS per-market suffixed: `order.requests.{market}` (e.g., `order.requests.btc-try`)
 - Ledger: `ledger-logs`, `external.ledger-logs`
 - Domain events: `{domain}-events` (e.g., `user-commission-events`, `config-service-events`)
 
@@ -80,7 +79,7 @@ Every Go service typically imports:
 
 ### Environment Variables
 - Uppercase, underscore-separated
-- Service addresses: `{SERVICE}_API_URL` (gRPC) or `{SERVICE}_ADDR` (e.g., `WALLET_SERVICE_ADDR=wallet:50058`)
+- Service addresses: `{SERVICE}_API_URL` (gRPC) or `{SERVICE}_ADDR` (e.g., `WALLET_SERVICE_ADDR=wallet:50051`). In-cluster gRPC services almost all listen on **:50051**; match engines are addressed via a template `match-%s:50051` where `%s`=`{currency}-{payment}` (e.g. `match-btc-try:50051`).
 - Database: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_DATABASE`, `DB_SSLMODE`
 - Kafka: `KAFKA_BROKERS`, `KAFKA_{TOPIC_NAME}_TOPIC`, `KAFKA_CONSUMER_GROUP`
 - Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_PASSWORD`, `REDIS_TLS_ENABLED`

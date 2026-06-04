@@ -30,8 +30,8 @@ order-api:
 
 ```
 order-api:
-  1. Determine target: match-{currency}-{payment}:50059
-     (e.g., "btc-try" → match-btc-try:50059)
+  1. Determine target: match-{currency}-{payment}:50051
+     (e.g., "btc-try" → match-btc-try:50051; via MATCH_SERVICE_ADDR_BASE=match-%s:50051)
   2. Call OrderService.CreateOrder(gRPC)
   3. Return order_id to client (async result will follow)
 ```
@@ -44,17 +44,17 @@ match-{market}:
   2. Run price-time priority matching
   3. For each match:
      - Create MatchEvent (taker, maker, price, quantity, match_id)
-  4. Produce to Kafka:
-     - order.events.match.{market} → MatchEvent (one or more matches)
-     - order.events.status.{market} → OrderStatus (filled/partial/open)
+  4. Produce to Kafka (shared, un-suffixed topics — consumers filter by market from payload):
+     - order.events.match → MatchEvent (one or more matches)
+     - order.events.status → OrderStatus (filled/partial/open)
   5. Update orderbook state → orderbook.state topic
-  6. Update last price → orderbook.match_price topic
+  6. Update last price → orderbook.match_price topic (only when a match occurs; empty book = no price)
 ```
 
 ## 5. Settlement (wallet — Kafka consumer)
 
 ```
-wallet (consumes order.events.match.{market}):
+wallet (consumes order.events.match):
   For each MatchEvent:
     1. Debit maker's reserved funds
     2. Credit taker with bought asset (minus commission)
@@ -68,7 +68,7 @@ wallet (consumes order.events.match.{market}):
 ```
 Parallel consumers:
   - wallet-ledger-sink: ledger-logs → PostgreSQL (durable balance history)
-  - match-forge: order.events.match.{market} → PostgreSQL (append-only trade store)
+  - match-forge: order.events.match → PostgreSQL (append-only trade store)
   - read-mono projections:
     - open-order-projection: tracks open orders
     - financial-history-projection: builds trade history
@@ -106,11 +106,11 @@ Client → bff → order-api.CancelOrder
 ## Conditional Order Flow
 
 ```
-Client → bff → conditional-order.CreateConditionalOrder(gRPC :50052)
+Client → bff → conditional-order.CreateConditionalOrder(gRPC :50051)
   → Stored in PostgreSQL
   → conditional-order consumes orderbook.match_price
   → When trigger price hit:
-    → Calls order-api.CreateOrder(gRPC :60060)
+    → Calls order-api gRPC :50051 (OrderAPIConditionalOrderService.Execute callback)
     → Normal order flow continues
 ```
 

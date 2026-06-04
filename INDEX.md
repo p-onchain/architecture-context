@@ -10,7 +10,7 @@ BlackSwan is a crypto exchange platform (Paribu v6). Go microservices, CQRS/Even
 
 | Domain | Services | Repos |
 |--------|----------|-------|
-| **Trading** | Order entry, matching engine, response aggregation, conditional triggers, event persistence | order-api, match-core, order-responder, conditional-order, match-forge |
+| **Trading** | Order entry, matching engine, response aggregation, conditional triggers, event persistence | order-api, match, order-responder, conditional-order, match-forge |
 | **Wallet** | Balance management, ledger persistence, validation | wallet, wallet-ledger-sink, wallet-validator, wallet-outbox |
 | **Transaction** | Crypto/fiat deposit & withdraw, blockchain monitoring | transaction, block-listener, onchain (TS) |
 | **User & Auth** | User management, KYC, auth (OIDC/OAuth2/passkeys/SSO) | user-service, mellon |
@@ -21,7 +21,7 @@ BlackSwan is a crypto exchange platform (Paribu v6). Go microservices, CQRS/Even
 | **Finance** | Invoicing, bank integration, commission processing | invoice-service, bank-integration, commission-update-worker |
 | **Staking** | Pool-based crypto staking | staking-service |
 | **Campaign** | Promotions, coupon campaigns | campaign-service |
-| **Read Models** | ~25 CQRS projection/query pairs for all domains | read-mono (monorepo) |
+| **Read Models** | 25 CQRS domains (~15 projections + ~21 query services) for all domains | read-mono (monorepo) |
 | **Gateway** | API gateway, BFF for web, BFF for mobile | krakend-gateway, bff-api, bff-client |
 | **Real-time** | WebSocket streaming | ws-hub (web/mobile), wapi (API-key traders) |
 | **Events** | Transaction event archival/mirroring | eventificator |
@@ -43,8 +43,8 @@ Client (Samaritan / Web / WAPI)
 ## Trading Flow (Core Path)
 
 ```
-bff → order-api → wallet (reserve funds) → match-core-{market} (match)
-  ↓ Kafka: order.events.match.{market}, order.events.status.{market}
+bff → order-api → wallet (reserve funds) → match-{currency}-{payment} (match)
+  ↓ Kafka (shared, payload-filtered): order.events.match, order.events.status
   → wallet (settle trades) → ledger-logs → wallet-ledger-sink
   → order-responder (aggregate response)
   → match-forge (persist match events)
@@ -55,13 +55,16 @@ bff → order-api → wallet (reserve funds) → match-core-{market} (match)
 
 | Topic Pattern | Producer → Consumers |
 |---------------|---------------------|
-| `order.events.match.{market}` | match-core → wallet, order-responder, match-forge, read-mono |
-| `order.events.status.{market}` | match-core → order-responder, conditional-order, read-mono |
+| `order.events.match` | match → wallet, order-responder, match-forge, read-mono |
+| `order.events.status` | match → order-responder, conditional-order, read-mono |
 | `ledger-logs` | wallet → wallet-ledger-sink, read-mono |
-| `orderbook.match_price` | match-core → order-api, conditional-order, read-mono |
-| `orderbook.state` | match-core → read-mono (orderbook) |
-| `config-service-events` | config-service → order-api, read-mono |
+| `orderbook.match_price` | match → order-api, conditional-order, read-mono |
+| `orderbook.state` | match → read-mono (orderbook) |
+| `order.requests.{market}` | match WAL (per-market suffixed) → match replays own WAL on startup (crash recovery) |
+| `config-service-events` | config-service → order-api, wallet, match, order-responder |
 | `user-commission-events` | commission → commission-update-worker, wallet |
+
+> Match/status/orderbook event topics are **shared and un-suffixed** — consumers filter by market from the payload. Only the WAL topic (`order.requests.{market}`) is per-market suffixed.
 
 ## Client Applications
 
@@ -84,7 +87,7 @@ bff → order-api → wallet (reserve funds) → match-core-{market} (match)
 ## Infrastructure
 
 - **Cloud:** AWS (multi-account, Terragrunt)
-- **K8s:** EKS + ArgoCD
+- **K8s:** EKS + ArgoCD. Services are split across namespaces — **`blackswan`**: order-api, wallet, match-*, conditional-order, order-responder, krakend-gateway, bff-api, bff-client. **`shelby`**: config-service, user-service, user-query, user-state-query, transaction. **`saul`**: ticker-query, global-price-tracker. (Most in-cluster gRPC services listen on **:50051**; order-api/bff-api HTTP on :3000, config-service/krakend HTTP on :8080.)
 - **Messaging:** Redpanda (Kafka-compatible)
 - **DB:** PostgreSQL (primary), ClickHouse (analytics), Redis (cache)
 - **Gateway:** KrakenD + custom Go plugins

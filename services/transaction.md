@@ -4,7 +4,7 @@
 
 - **Repo:** p-blackswan/transaction
 - **Lang:** Go
-- **Port:** gRPC :50076
+- **Port:** gRPC **:50051**  (namespace **`shelby`**, not `blackswan`)
 - **DB:** PostgreSQL
 
 ## Talks To

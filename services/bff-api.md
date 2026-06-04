@@ -4,7 +4,7 @@
 
 - **Repo:** p-blackswan/bff-api
 - **Lang:** Go
-- **Port:** HTTP :3001
+- **Port:** HTTP :3000
 - **Stateless proxy** — no DB
 
 ## Talks To

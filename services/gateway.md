@@ -8,7 +8,7 @@
 ## Routing
 
 ```
-/api/v1/web/*     → bff-api:3001
+/api/v1/web/*     → bff-api:3000
 /api/v1/mobile/*  → bff-client:8080
 /v1/stream        → wapi (public WS, anonymous)
 /v1/user          → wapi (private WS, API-key auth)

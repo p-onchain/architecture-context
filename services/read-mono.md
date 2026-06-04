@@ -1,6 +1,6 @@
 # read-mono
 
-> CQRS read-side monorepo. ~25 projection/query service pairs that build read-optimized views from Kafka events.
+> CQRS read-side monorepo. 25 service domains (~15 projections + ~21 query services + a few workers; ~43 deployable units in prod) that build read-optimized views from Kafka events. Not every domain has both a projection and a query.
 
 - **Repo:** p-blackswan/read-mono
 - **Lang:** Go — per-service modules (each `projection`/`query`/`worker` has its own `go.mod`); `go.work` is local-dev convenience only, not used in CI/prod

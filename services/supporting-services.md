@@ -10,11 +10,11 @@
 
 **match-forge** — Persists match events from Redpanda to PostgreSQL as append-only event store. S3 archival for old data.
 
-**conditional-order** (gRPC :50052) — Stop-loss, take-profit, conditional triggers. Consumes `orderbook.match_price`, calls order-api to submit triggered orders.
+**conditional-order** (gRPC :50051) — Stop-loss, take-profit, conditional triggers. Consumes `orderbook.match_price`, calls order-api to submit triggered orders.
 
 ## Config & Feature Management
 
-**config-service** — Dynamic config management. Produces `config-service-events` to Kafka. HTTP REST API (not gRPC).
+**config-service** — Dynamic config management (namespace **`shelby`**, HTTP **:8080**, REST not gRPC). Produces `config-service-events` to Kafka (outbox worker). Market list via `GET /default?basic=true` (markets live only in the `basic` blob); each market carries `precisions`+`steps` (no price, no limits). Tradeable = `unlisted!=true && suspended` absent. Per-market user override via `GET /merged/{userID}`.
 
 **feature-flags** — YAML-based feature flag definitions consumed by flagd/OpenFeature.
 
