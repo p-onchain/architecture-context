@@ -4,8 +4,6 @@
 **Yöntem:** Canlı phoenix-test EKS cluster (ReadOnly) + gerçek repo'lar (order-api, match, wallet, transaction, config-service, user-service, market-configs, read-mono, proto-hub) + **exchange-automation-tests** (ampirik ground truth) çapraz kontrolü.
 **Fact hiyerarşisi:** canlı cluster Service objeleri (bağlantı: DNS/port) > gerçek repo (proto/method/DTO) > exchange-automation-tests (gerçek uçtan uca çağrı dizisi).
 
-> ⚠️ **Önemli:** `~/architecture-context` context pack'inin **portları ve namespace'leri sistematik olarak yanlış** çıktı (order-api 9000→aslında 3000, wallet 50058→50051, match 50059→prod'da 50051, match-core "aktif"→arşivli, config/user/ticker servisleri "blackswan ns"→aslında shelby/saul). PRD'nin ilk incelemesinde bu pack'e güvenip yaptığım "düzeltmeler" hatalıydı; **PRD'nin port/iddialarının çoğu doğruymuş.** Aşağıdaki her şey canlı kanıta dayanıyor.
-
 ---
 
 ## 1. Doğrulanmış Bağlantı Gerçekleri (canlı cluster)
