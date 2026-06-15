@@ -27,3 +27,4 @@
 - No external DB dependency (uses Redis for idempotency, S3 for snapshots)
 - Market definitions in `p-blackswan/market-configs` (YAML, GitOps); ArgoCD generates one Deployment per market YAML. Trading params (precision/steps) come from config-service, not the YAML
 - Events use Protobuf + Schema Registry; decimals use `govalues/decimal`
+- **client_order_id propagation (EXCH-6672, 2026-06):** `ExtraData.ClientOrderId` is now carried through from `CreateOrderRequest` → domain command → match events. Validation is intentionally **absent in match** — match passes the value through without validating format/uniqueness (validation lives at order-api / upstream). proto-hub bumped to v1.23.23.
