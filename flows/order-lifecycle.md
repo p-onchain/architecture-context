@@ -16,6 +16,7 @@ Client (Samaritan/Web)
 ```
 order-api:
   1. Validate request (market exists, price within limits, user not locked)
+     - Min-order-value floor snapped to nearest achievable step (EXCH-2698)
   2. Check idempotency key (Redis DB 1) — reject duplicates
   3. Fetch commission rates from Redis (via wallet)
   4. Call wallet.ReserveTradeFund(gRPC) — locks user's funds
@@ -74,9 +75,10 @@ Parallel consumers:
     - financial-history-projection: builds trade history
     - ticker-projection: updates 24h stats
     - klines-projection: builds OHLCV candles
-    - balance-projection: updates read-side balances
-    - pnl-projection: calculates P&L
+    - balance-projection: updates read-side balances (batched for throughput)
+    - pnl-projection: calculates P&L (batched consumer to drain ledger lag)
     - orderbook-projection: rebuilds order book snapshots
+    - orderbook-wapi-projection: separate WAPI-optimised orderbook stream (Redis key schema in rediskeys pkg)
 ```
 
 ## 7. Response to Client
@@ -84,8 +86,15 @@ Parallel consumers:
 ```
 order-responder (consumes order.events.match + order.events.status):
   1. Aggregates match results for the order
-  2. Writes to Redis order cache (DB 7)
-  3. BFF can poll or client receives via WebSocket
+  2. Writes extended response to Redis order cache (DB 7)
+
+order-api (extended response path):
+  3. Polls Redis (match_response_repository) for the aggregated result
+  4. Returns to BFF / client once available (or timeout)
+
+⚠️  Previously order-api consumed match-response directly from Kafka.
+    As of EXCH-6786 (2026-05), that Kafka consumer was removed.
+    All match-response aggregation now goes through order-responder → Redis.
 
 ws-hub / wapi:
   - Streams real-time updates to connected clients
@@ -113,5 +122,3 @@ Client → bff → conditional-order.CreateConditionalOrder(gRPC :50051)
     → Calls order-api gRPC :50051 (OrderAPIConditionalOrderService.Execute callback)
     → Normal order flow continues
 ```
-
-

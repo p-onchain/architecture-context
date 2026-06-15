@@ -4,7 +4,7 @@
 
 ## System Overview
 
-BlackSwan is a crypto exchange platform (Paribu v6). Go microservices, CQRS/Event Sourcing, gRPC (sync) + Redpanda/Kafka (async). Deployed on Kubernetes (EKS) via ArgoCD GitOps.
+BlackSwan is a crypto exchange platform (Paribu v6). Go microservices (1.26+), CQRS/Event Sourcing, gRPC (sync) + Redpanda/Kafka (async). Deployed on Kubernetes (EKS) via ArgoCD GitOps.
 
 ## Service Map
 
@@ -21,9 +21,9 @@ BlackSwan is a crypto exchange platform (Paribu v6). Go microservices, CQRS/Even
 | **Finance** | Invoicing, bank integration, commission processing | invoice-service, bank-integration, commission-update-worker |
 | **Staking** | Pool-based crypto staking | staking-service |
 | **Campaign** | Promotions, coupon campaigns | campaign-service |
-| **Read Models** | 25 CQRS domains (~15 projections + ~21 query services) for all domains | read-mono (monorepo) |
+| **Read Models** | 25+ CQRS domains (~15 projections + ~21 query services) for all domains | read-mono (monorepo) |
 | **Gateway** | API gateway, BFF for web, BFF for mobile | krakend-gateway, bff-api, bff-client |
-| **Real-time** | WebSocket streaming | ws-hub (web/mobile), wapi (API-key traders) |
+| **Real-time** | WebSocket streaming | ws-hub (web/mobile JWT), wapi (API-key traders, direct Redpanda) |
 | **Events** | Transaction event archival/mirroring | eventificator |
 | **Infra** | GitOps, Terraform, Helm | blackswan-gitops, blackswan-infrastructure, platform-gitops, platform-terraform |
 
@@ -46,10 +46,12 @@ Client (Samaritan / Web / WAPI)
 bff → order-api → wallet (reserve funds) → match-{currency}-{payment} (match)
   ↓ Kafka (shared, payload-filtered): order.events.match, order.events.status
   → wallet (settle trades) → ledger-logs → wallet-ledger-sink
-  → order-responder (aggregate response)
+  → order-responder (aggregate response → Redis DB 7)  ← order-api polls Redis for extended response
   → match-forge (persist match events)
-  → read-mono projections (orderbook, ticker, balance, etc.)
+  → read-mono projections (orderbook, ticker, balance, pnl, etc.)
 ```
+
+> **Note (2026-05):** order-api no longer consumes match-response from Kafka directly. order-responder writes the aggregated result to Redis; order-api reads it from there.
 
 ## Key Kafka Topics
 
@@ -59,7 +61,7 @@ bff → order-api → wallet (reserve funds) → match-{currency}-{payment} (mat
 | `order.events.status` | match → order-responder, conditional-order, read-mono |
 | `ledger-logs` | wallet → wallet-ledger-sink, read-mono |
 | `orderbook.match_price` | match → order-api, conditional-order, read-mono |
-| `orderbook.state` | match → read-mono (orderbook) |
+| `orderbook.state` | match → read-mono (orderbook, orderbook-wapi) |
 | `order.requests.{market}` | match WAL (per-market suffixed) → match replays own WAL on startup (crash recovery) |
 | `config-service-events` | config-service → order-api, wallet, match, order-responder |
 | `user-commission-events` | commission → commission-update-worker, wallet |
@@ -72,7 +74,7 @@ bff → order-api → wallet (reserve funds) → match-{currency}-{payment} (mat
 |--------|------|-------|-----|
 | **Samaritan** (mobile) | pikachu-exchange/samaritan | React Native (Expo) | bff-client |
 | **Web** | p-blackswan/web | Vue.js | bff-api |
-| **WAPI** (trading API) | p-blackswan/wapi | Go WebSocket | Direct (API-key via KrakenD) |
+| **WAPI** (trading API) | p-blackswan/wapi | Go WebSocket (1.25) | Direct (API-key via KrakenD) |
 | **GoPanel** (admin) | pikachu-exchange/gopanel | Go + Vue | Direct |
 
 ## Shared Libraries
@@ -82,7 +84,7 @@ bff → order-api → wallet (reserve funds) → match-{currency}-{payment} (mat
 | **corekit** | p-blackswan/corekit | DB, Kafka, gRPC, config, error handling, worker patterns |
 | **proto-hub** | p-blackswan/proto-hub | All protobuf definitions + generated Go code |
 | **observer** | p-blackswan/observer | OTEL exporters, Pyroscope, metrics/tracing |
-| **fixedpoint** | p-blackswan/fixedpoint | Decimal arithmetic for financial calculations |
+| **fixedpoint** | p-blackswan/fixedpoint | Decimal arithmetic for financial calculations (NOT used in read-mono) |
 
 ## Infrastructure
 
@@ -91,7 +93,7 @@ bff → order-api → wallet (reserve funds) → match-{currency}-{payment} (mat
 - **Messaging:** Redpanda (Kafka-compatible)
 - **DB:** PostgreSQL (primary), ClickHouse (analytics), Redis (cache)
 - **Gateway:** KrakenD + custom Go plugins
-- **Observability:** SigNoz (traces/logs), VictoriaMetrics (metrics), Pyroscope (profiling)
+- **Observability:** SigNoz v0.128.0 (traces/logs), VictoriaMetrics (metrics), Pyroscope (profiling)
 - **CI/CD:** GitHub Actions → Docker → ArgoCD
 - **Feature Flags:** flagd (OpenFeature)
 - **Secrets:** HashiCorp Vault
