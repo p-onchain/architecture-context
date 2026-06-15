@@ -4,7 +4,7 @@
 
 ## Language & Stack
 
-- **Primary language:** Go (1.25+)
+- **Primary language:** Go (1.26+ for new services; corekit/wapi/bff-client on 1.25.3 as of 2026-06 — version drift is intentional during rolling upgrades)
 - **Exceptions:** onchain (TypeScript), heimdall (Rust), clients (TypeScript/Vue/React Native)
 - **Standard toolkit:** `p-blackswan/corekit` — every Go service uses this
 - **Observability:** `p-blackswan/observer` — shared OTLP + Pyroscope setup
@@ -100,6 +100,31 @@ Every Go service typically imports:
 - Consumer groups follow pattern: `{service-name}-{topic-suffix}`
 - redpanda-connect mirrors select topics from internal Redpanda to MSK
 
+#### corekit simple.Processor — Commit Policies (2026-06)
+
+`corekit/messaging/kafka/consumer/processors/simple` exposes three commit modes via `PROCESSOR_COMMIT_POLICY`:
+
+| Policy | Env value | Semantics |
+|--------|-----------|-----------|
+| **ManualCommit** | `manual` (default) | Sync commit after successful handle — at-least-once |
+| **AutoCommit** | `auto` | Commit before handle — at-most-once (fire-and-forget) |
+| **AsyncCommit** | `async` | Non-blocking offset store after handle; librdkafka commits in background — at-least-once without per-message broker round-trip. Requires `enable.auto.commit=true` + `enable.auto.offset.store=false` on the consumer group. |
+
+#### corekit simple.Processor — Per-Partition Head-of-Line Isolation (2026-06)
+
+Opt-in via `PROCESSOR_PARTITION_ISOLATION=true`. Each partition gets a buffered worker channel (default 1000 msgs). When a slow partition fills to high-water (90%), it is paused at the broker; resumed at low-water (50%). Prevents one sluggish partition from blocking the shared poll loop and starving all other partitions.
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `PROCESSOR_PARTITION_ISOLATION` | `false` | Enable per-partition HoL isolation |
+| `PROCESSOR_PARTITION_BUFFER_SIZE` | `1000` | Per-partition channel depth |
+| `PROCESSOR_PARTITION_ISOLATION_HIGH_WATER` | `0.9` | Pause fraction |
+| `PROCESSOR_PARTITION_ISOLATION_LOW_WATER` | `0.5` | Resume fraction |
+
+⚠️ Partition isolation is **incompatible** with DLQ pause-on-failure consumer mode — enabling both fails at startup.
+
+**Currently enabled on:** wapi (async commit + partition isolation both on as of 2026-06)
+
 ### Schema Registry
 - All Kafka messages use Protobuf schemas registered in Redpanda Schema Registry
 - `AUTO_REGISTER_SCHEMAS=false` in production (schemas pre-registered via CI)
@@ -109,7 +134,7 @@ Every Go service typically imports:
 
 - All financial values are **strings** in protobuf (no float/double)
 - Use `fixedpoint` library (p-blackswan/fixedpoint) for arithmetic
-- Never use floating-point for money calculations
+- **Exception — read-mono:** uses `govalues/decimal` (NOT fixedpoint). Do NOT introduce fixedpoint in read-mono.
 
 ## User IDs
 
@@ -125,6 +150,7 @@ Every Go service typically imports:
 - **Profiling:** Pyroscope (continuous profiling)
 - Every service sets `OTEL_SERVICE_NAME` matching the deployment name
 - Trace context propagated via gRPC interceptors and Kafka headers
+- **GOMAXPROCS:** Set to match container CPU limit (via `automaxprocs` or explicit env) — do NOT leave at default runtime value
 
 ## CI/CD
 

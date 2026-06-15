@@ -65,6 +65,8 @@
 **ws-hub** — WebSocket hub for web/mobile clients. JWT auth.
 
 **wapi** — Low-latency WebSocket for API-key traders. Direct Redpanda consumption. See `clients/wapi.md`.
+- As of 2026-06: uses **AsyncCommit** offset policy (`PROCESSOR_COMMIT_POLICY=async`) — removes per-message broker round-trip while preserving at-least-once.
+- As of 2026-06: **per-partition head-of-line isolation** enabled (`PROCESSOR_PARTITION_ISOLATION=true`) — slow partitions are paused at broker instead of wedging the poll loop.
 
 ## Admin
 
