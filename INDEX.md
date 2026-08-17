@@ -65,8 +65,12 @@ bff → order-api → wallet (reserve funds) → match-{currency}-{payment} (mat
 | `order.requests.{market}` | match WAL (per-market suffixed) → match replays own WAL on startup (crash recovery) |
 | `config-service-events` | config-service → order-api, wallet, match, order-responder |
 | `user-commission-events` | commission → commission-update-worker, wallet |
+| `order.events.dex` | onchain (DEX v2 producer, `proto.dex.order.v2`) → read-mono (**defi** projection) |
+| `pnl.defi.asset.updates` | read-mono **defi** → read-mono **pnl** (DEX holdings feed; replaces onchain's legacy producer post-cutover) |
 
 > Match/status/orderbook event topics are **shared and un-suffixed** — consumers filter by market from the payload. Only the WAL topic (`order.requests.{market}`) is per-market suffixed.
+
+> **DEX read side (CQRS migration in progress):** DEX accounting is moving out of the `onchain` service into a read-mono **`defi`** domain that consumes `order.events.dex` and serves DEX holdings/PnL (see `services/read-mono.md`). The legacy `order.events.defi` (`proto.defi.order.v1`) topic stays for financial-history. Merged + live on `phoenix-test`; prod is a launch (not yet live).
 
 ## Client Applications
 
@@ -113,4 +117,5 @@ bff → order-api → wallet (reserve funds) → match-{currency}-{payment} (mat
 2. Read `services/<name>.md` for the service you're touching — it tells you what it talks to
 3. Read `flows/<flow>.md` if you need an end-to-end process
 4. Read `conventions.md` for coding standards
-5. **Clone the repo and read the code** for implementation details
+5. Read `test-env.md` to reach the live `phoenix-test` cluster (kubectl/auth/VPN) and read its logs, DBs, and vault secrets
+6. **Clone the repo and read the code** for implementation details

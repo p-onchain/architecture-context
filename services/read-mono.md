@@ -16,9 +16,11 @@ Some domains also add a **worker** (e.g. ticker, pnl, commission); a few are pro
 
 ## Domains
 
-alarm, anomaly-detection, balance, bank-integration, campaign, commission, cost-basis, custody-integration, favourite, feedback, financial-history, klines, open-order, orderbook, orderbook-wapi, pass, pnl, pnl-agg, staking, ticker, transaction, user, user-state, uservolume, ws
+alarm, anomaly-detection, balance, bank-integration, campaign, commission, cost-basis, custody-integration, defi, favourite, feedback, financial-history, klines, open-order, orderbook, orderbook-wapi, pass, pnl, pnl-agg, staking, ticker, transaction, user, user-state, uservolume, ws
 
 > `orderbook-wapi` is a separate domain from `orderbook` — it serves the WAPI WebSocket orderbook stream with its own Redis key schema (centralized in `rediskeys` package).
+
+> **`defi`** is the DEX/on-chain read side (CQRS migration of DEX accounting out of the `onchain` service). It consumes `order.events.dex` (v2, produced by `onchain`), owns DEX holdings/cost-basis/realized-PnL (own Postgres `defi` DB, rebuilt by sorted replay), **produces** `pnl.defi.asset.updates` (→ `pnl`), and serves `defi.query.v1.DefiQueryService.GetUserHoldings` over gRPC (→ `pnl-agg`). As a result **`cost-basis` is now CEX-only** (it no longer tracks DEX). The `defi` service is merged + live on `phoenix-test`; the `ticker` DeFi-price feed and the `pnl-agg` re-point onto `defi-query` are still in flight, and prod is a launch (not yet live).
 
 ## Key Details
 
