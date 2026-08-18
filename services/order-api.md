@@ -2,6 +2,8 @@
 
 > Order entry gateway. Accepts orders, validates, reserves funds via wallet, routes to matching engine.
 
+> **Broker/namespace/flag facts verified 2026-08-17**; the HTTP order contract below was last checked 2026-06 — re-read the handler before relying on field-level detail.
+
 - **Repo:** p-blackswan/order-api
 - **Lang:** Go 1.26
 - **Ports (live cluster):** HTTP **:3000**, gRPC **:50051**  (repo container defaults are HTTP 9000 / gRPC 60060; the deployment/Service expose 3000/50051). gRPC server only serves the conditional-order `Execute` callback — order creation is HTTP-only.
@@ -24,7 +26,10 @@
 
 ## Kafka
 
+**Broker: internal Redpanda** (`10.240.*:9092`, plaintext) — the hot path, not MSK.
+
 - Consumes: `orderbook.match_price`, `config-service-events`, `user-state-events`
+  (the latter two are mirrored MSK→Redpanda by `redpanda-connect`)
 - Does NOT produce order events — match produces them
 - **⚠️ match-response Kafka consumer removed (EXCH-6786, 2026-05):** order-api no longer consumes match-response from Kafka. Match responses now flow via order-responder → Redis (DB 7). order-api polls Redis for the extended response via `match_response_repository`.
 
@@ -35,5 +40,10 @@
 - Market config fetched via REST `GET {CONFIG_URL}/default` (+ `/merged/{userID}`) and refreshed via Kafka `config-service-events`
 - **No rate limiting in order-api** — rate limiting lives only at KrakenD (in-cluster callers to `order-api:3000` bypass it entirely)
 - `CanTrade` is read from user-state-query (computed in read-mono's user-state projection), cached in Redis; unknown users default to `CanTrade=false` → 403
-- Uses Redis for idempotency, user cache, order cache; corekit + proto-hub
+- Uses Redis for idempotency, user cache, order cache; corekit + proto-hub. Dedicated ElastiCache
+  clusters `exc-prod-order-api` and (for order-responder) `exc-prod-order-responder`
 - ctx cancellation / deadline treated as non-failure for match-response breaker (EXCH-6786)
+- **Feature flags come from Flipt v2** (`flipt-v2` in ns `blackswan`, flag state in the
+  `feature-flags` repo under `flipt/<env>`) — order-api was its first consumer (E4B-85)
+- Siblings in ns `blackswan`: `order-responder` (~64 pods — it also owns the `client_order:` Redis
+  keyspace) and `order-strategies` (5 pods, `p-blackswan/order-strategies`)

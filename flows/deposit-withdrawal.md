@@ -1,6 +1,14 @@
 # Flow: Deposit & Withdrawal
 
 > End-to-end flows for crypto and fiat deposits/withdrawals.
+> **Last verified 2026-08-17.**
+
+⚠️ **These flows cross clouds.** The orchestrator (`transaction`) and the fiat stack
+(`bank-integration`, `invoice-service`, `reconciliation`, `pdf-operations`, `soap-instant-pay`) run on
+**Huawei `exc-prod-hw`**, while `wallet`, `custody-integration` and `onchain` run on AWS
+`exc-prod-alpha`. Cross-cluster calls go through the internal gateway
+(`transaction.internal.paribu.com:50051`, `user.internal.paribu.com:50051`) rather than cluster DNS —
+so a "service unavailable" here can be a gateway/route problem, not the service.
 
 ## Crypto Deposit
 
@@ -109,6 +117,16 @@
 
 ## Services Involved
 
-transaction (orchestrator), wallet (balances), onchain (blockchain monitoring), custody-integration (HSM signing), bank-integration (fiat), elliptic-screener (AML), notification (user alerts)
+transaction (orchestrator, **HW**), wallet (balances, AWS), onchain (blockchain monitoring + DeFi, AWS
+ns `onchain`), custody-integration (HSM signing, AWS), bank-integration (fiat, **HW**),
+elliptic-screener (AML, AWS), notif2 (`notify-api`, user alerts), read-mono
+transaction-query/financial-history-projection/balance-projection (read side).
 
-Event protos: `proto/transaction/event/v1/` in proto-hub
+Event protos: `proto/transaction/event/v1/` in proto-hub. Kafka topics (MSK):
+`transaction-events`, `address-events`, `elliptic-screener-events`.
+
+⚠️ **transaction is a fire-and-forget notify caller** — if `notify-api` returns 503, the user
+notification is silently lost rather than retried.
+
+⚠️ A **delisted asset** used to block account closure; fixed 2026-08-02 — guard both legs and remember
+TRY conversion goes via USDT with a server-side multiplier.

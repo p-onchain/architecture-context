@@ -1,15 +1,21 @@
 # Flow: Order Lifecycle
 
 > End-to-end flow of a trade order from client submission to settlement.
+> **Last verified 2026-08-17.**
 
 ## 1. Order Submission
 
 ```
-Client (Samaritan/Web)
-  → KrakenD (JWT validation)
-    → bff-api/bff-client (HTTP)
-      → order-api (HTTP POST /v1/orders)
+Client (micro-web / Samaritan)
+  → Cloudflare
+    → Envoy Gateway (external-gw, ns gateway-api-system)
+      → KrakenD (service.name=krand; JWT validation, rate limiting)
+        → bff-api :3000 (web) / bff-client :8080 (mobile)
+          → order-api (HTTP POST /order — singular; header X-User-ID must equal body user_id)
 ```
+
+> Market is `currency` + `payment` as separate lowercase fields, not a combined symbol.
+> Stop/OCO use `POST /conditional-order` and `POST /oco-order`. Full contract in `services/order-api.md`.
 
 ## 2. Validation & Fund Reservation (order-api)
 
@@ -45,12 +51,19 @@ match-{market}:
   2. Run price-time priority matching
   3. For each match:
      - Create MatchEvent (taker, maker, price, quantity, match_id)
-  4. Produce to Kafka (shared, un-suffixed topics — consumers filter by market from payload):
+  4. Produce to the INTERNAL REDPANDA cluster (shared, un-suffixed topics —
+     consumers filter by market from payload):
      - order.events.match → MatchEvent (one or more matches)
      - order.events.status → OrderStatus (filled/partial/open)
   5. Update orderbook state → orderbook.state topic
   6. Update last price → orderbook.match_price topic (only when a match occurs; empty book = no price)
 ```
+
+⚠️ **Broker boundary.** Everything above is on the internal Redpanda cluster. `redpanda-connect`
+mirrors `order.events.match`, `order.events.status` and `ledger-logs` to **MSK**, which is where the
+read-side projections consume them — so read-side lag has two hops, and any offset-reset rebuild is
+bounded by **MSK** retention. Only `orderbook-projection` and `orderbook-wapi-projection` read
+Redpanda directly.
 
 ## 5. Settlement (wallet — Kafka consumer)
 
@@ -70,16 +83,21 @@ wallet (consumes order.events.match):
 Parallel consumers:
   - wallet-ledger-sink: ledger-logs → PostgreSQL (durable balance history)
   - match-forge: order.events.match → PostgreSQL (append-only trade store)
-  - read-mono projections:
-    - open-order-projection: tracks open orders
-    - financial-history-projection: builds trade history
-    - ticker-projection: updates 24h stats
-    - klines-projection: builds OHLCV candles
-    - balance-projection: updates read-side balances (batched for throughput)
-    - pnl-projection: calculates P&L (batched consumer to drain ledger lag)
-    - orderbook-projection: rebuilds order book snapshots
-    - orderbook-wapi-projection: separate WAPI-optimised orderbook stream (Redis key schema in rediskeys pkg)
+  - read-mono projections (all on MSK unless noted):
+    - open-order-projection: tracks open orders (ns saul)
+    - financial-history-projection: builds trade history (ns saul; also consumes `commission`, `transaction-events`)
+    - ticker-projection: updates 24h stats (ns saul, ClickHouse) — also consumes orderbook.bestbidask
+    - klines-projection: builds OHLCV candles (ns saul, ClickHouse)
+    - uservolume-projection / cost-basis-projection (ns saul) — cost-basis is CEX-only
+    - balance-projection: read-side balances (ns BLACKSWAN, batched; DLQ `balance-projection.dlq`)
+    - orderbook-projection + orderbook-wapi-projection: order book snapshots
+      (ns saul, **direct off Redpanda**; WAPI stream has its own Redis key schema in `rediskeys`)
+    - ws-projection (ns corleone) → `websocket-events` → ws-hub
 ```
+
+> **pnl-projection is not a match consumer.** It builds P&L from `ledger-logs` (wallet) plus
+> `ticker.daily` / `ticker.last24h`, and — for DEX — `pnl.defi.asset.updates` from the read-mono
+> `defi` domain. See `services/read-mono.md`.
 
 ## 7. Response to Client
 

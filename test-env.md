@@ -1,5 +1,18 @@
 # Test environment — phoenix-test (kubectl) & nonprod telemetry
 
+**Last verified 2026-08-07** (access recipes) / **2026-08-17** (deploy mapping below).
+
+> **How test relates to prod.** Test mirrors prod's namespace layout (`blackswan`, `saul`, `shelby`,
+> `onchain`, `gopanel`, `corleone`, `momentum`) — see `INDEX.md` for the prod cluster/namespace map and
+> the two-Kafka topology. Which apps exist per env is decided by the values files in each repo:
+> `.cd/helm/test/*.yaml` → `exc-test-alpha` (this cluster), `.cd/helm/hw-test/*.yaml` → `exc-test-hw`
+> (Huawei). One ArgoCD app per file; adding a file creates an app on merge.
+>
+> Test is **not** a subset of prod. read-mono, for example, has 49 test apps vs 43 prod, including
+> `open-order-v2-{projection,query}` and `pass-projection` that don't exist in prod, plus
+> `transaction-query`, `user-query` and `bank-integration-query` which in **prod** run only on Huawei.
+> The read-mono `notify` domain (`notify-projection`/`notify-query`) is Huawei-only in both envs.
+
 Two ways to observe the test environment:
 - **Telemetry** — the **sre-mcp** aggregator (plugin `sre-mcp@paribu-agent-marketplace`,
   SSO-authed): `signoz_nonprod_*` (traces/logs) + `vm_nonprod_*` (PromQL) expose the

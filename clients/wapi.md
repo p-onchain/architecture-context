@@ -2,10 +2,15 @@
 
 > Low-latency WebSocket service for API-key trading clients.
 
+> **Broker, namespace and consumer config verified 2026-08-17** against `.cd/helm/prod/values.yaml`.
+
 - **Repo:** p-blackswan/wapi
-- **Lang:** Go
+- **Lang:** Go · HTTP/WS **:8080** · namespace **`corleone`** (3 pods)
 - **Auth:** API-key on `/v1/user` (KrakenD HMAC), anonymous on `/v1/stream`
-- **Data source:** Internal Redpanda directly
+- **Data source:** **internal Redpanda directly** (`10.240.*:9092`, plaintext) — verified 2026-08-17.
+  Topics: `order.events.match`, `order.events.status`, `orderbook.match_price`, `ledger-logs`,
+  `wallet-error-events` (`orderbook.state` was dropped, ADR-011). Dedicated ElastiCache
+  `exc-prod-wapi`; Schema Registry is the shared Confluent SR in ns `blackswan`.
 
 ## Endpoints
 

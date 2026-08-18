@@ -1,11 +1,14 @@
 # Flow: Authentication & Authorization
 
 > How users authenticate and how requests are authorized across the platform.
+> **Last verified 2026-08-17.** mellon is deployed as **`auth-service`** (ns `shelby`,
+> `auth.int.paribu.com`, HTTP :8080; BFF env vars still say `MONOSIGN_*`). Public auth host is
+> `https://account.paribu.com`. Requests reach KrakenD through Cloudflare → Envoy `external-gw`.
 
 ## Login Flow
 
 ```
-1. Client (Samaritan/Web) → KrakenD → mellon
+1. Client (Samaritan/micro-web) → Envoy → KrakenD → mellon (auth-service)
    → POST /auth/login (email + password)
    → mellon validates credentials against user-service
    → If MFA enabled:
@@ -50,9 +53,13 @@ Client → KrakenD → mellon
   → POST /auth/logout
   → mellon invalidates session in Redis
   → krakend-revoke-server propagates revocation to all KrakenD instances
-  → revoke-relay handles cross-cluster propagation
-  → Produces: all_sessions_closed_event (if logout-all)
+    (bff-api reaches it at http://krakend-revoke-server.blackswan.svc.cluster.local:8081)
+  → Produces: all_sessions_closed_event (if logout-all) + auth-audit-events
 ```
+
+⚠️ **revoke-relay is archived** — cross-cluster propagation no longer runs through it. If you need to
+reason about revocation across `exc-prod-alpha` ↔ `exc-prod-hw`, read the current
+krakend-revoke-server code rather than assuming a relay exists.
 
 ## API-Key Authentication (Trading API)
 
@@ -66,6 +73,23 @@ Trading client → KrakenD
   → Injects X-User-Id header
   → Routes to wapi (WebSocket) or bff-api (REST)
 ```
+
+## KYC
+
+KYC is **not** in mellon or user-service — it lives in **`estel`** (Rust): `kyc-api`,
+`kyc-orchestrator`, `kyc-backoffice`, reached by bff-client as
+`PKYC_API_URL=http://kyc.internal.paribu.com` (Huawei side). Client SDKs: `p-utilities/p-kyc`,
+`nitro-kyc`, `react-native-nfc-passport-reader`. user-service still owns `kyc_status` as raw state,
+and there is **no test-env KYC bypass** (the real provider runs in test too).
+
+## OTP / SMS caveats
+
+- The only honest signal for OTP success is **`auth_mfa_verify_total`** — provider "success" only means
+  the SMS was *accepted*.
+- Infobip credentials are 401, so **Mobildev is a single point of failure** and foreign-number OTP is
+  broken by design.
+- "Parolamı unuttum": if e-mail and phone don't match, **no SMS is ever sent** while the UI still says
+  a code was sent (a deliberate decoy flow) — a large share of attempts, and unalarmed.
 
 ## Passkey (WebAuthn) Flow
 
@@ -94,10 +118,13 @@ Mobile app uses DTT (native module: expo-dtt):
 
 | Component | Role |
 |-----------|------|
-| **mellon** | Auth service (OIDC, sessions, JWT issuance) |
-| **KrakenD** | JWT validation on every request |
+| **mellon** (deployed `auth-service`) | Auth service (OIDC, sessions, JWT issuance) |
+| **Envoy Gateway** | TLS/routing at `external-gw` before KrakenD |
+| **KrakenD** (`krand`) | JWT validation on every request |
 | **krakend-apikey-plugin** | API-key HMAC auth for trading clients |
 | **krakend-revoke-server** | Token revocation propagation |
-| **revoke-relay** | Cross-cluster session invalidation |
-| **user-service** | User credentials, MFA settings, passkeys |
+| ~~revoke-relay~~ | **archived** — no longer in the path |
+| **user-service** (Huawei) | User credentials, MFA settings, passkeys |
+| **estel** | KYC (`kyc-api` / `-orchestrator` / `-backoffice`) |
+| **notif2** | OTP delivery (SMS/push) |
 | **expo-dtt** | Device trust tokens (mobile native) |

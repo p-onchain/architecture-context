@@ -3,33 +3,51 @@
 > Backend-for-Frontend for the web client. Aggregates gRPC microservices into HTTP/JSON.
 
 - **Repo:** p-blackswan/bff-api
-- **Lang:** Go 1.26
-- **Port:** HTTP :3000
-- **Stateless proxy** — no DB
+- **Lang:** Go
+- **Port:** HTTP :3000 · namespace `blackswan` · internal route `bff-api.int.paribu.com`
+- **Stateless proxy** — no DB (Redis only, for MFA session state)
+- **Its client is `micro-web`** (the `paribu-*` micro-frontends behind `paribu-orchestrator`), not the
+  retired `web` SPA. See `clients/web.md`.
+- **Last verified 2026-08-17** from `.cd/helm/prod/`.
 
 ## Talks To
 
-Sits behind KrakenD, fans out to downstream gRPC services:
-- **Trading:** order-api, conditional-order, open-order-query
-- **User:** user-service, user-query, user-state-query
-- **Balance:** balance-query, wallet
-- **Transaction:** transaction, transaction-query
-- **Market Data:** ticker-query, klines-query, global-price-tracker, orderbook-query
-- **Finance:** commission-api, financial-history-query, pnl-query
-- **Features:** alarm-query, favourite-query, feedback-query, input-validator
-- **Staking:** staking-command, staking-query
-- **Notification:** notification-api
-- **Config:** config-service (HTTP REST)
-- **Support:** tickbu (HTTP REST — support ticket system)
+Behind KrakenD; fans out over gRPC. The address form tells you which cluster the callee is in:
+
+**Same cluster (AWS `exc-prod-alpha`) — in-cluster DNS `<svc>.<ns>.svc.cluster.local:50051`:**
+
+| Namespace | Upstreams |
+|---|---|
+| `saul` | ticker-query, klines-query, orderbook-query, open-order-query, financial-history-query, uservolume-query, pnl-query, commission-api, notify-api (HTTP :8080) |
+| `blackswan` | order-api (HTTP :3000), conditional-order, order-strategies, balance-query, krakend-revoke-server (HTTP :8081) |
+| `shelby` | auth-service (mellon, HTTP :8080 — env vars still say `MONOSIGN_*`), config-service (HTTP :8080), input-validator, user-state-query |
+| `corleone` | alarms-server (**:50082**), alarm-query |
+| `saul`/other | global-price-tracker-api |
+
+**Cross-cloud (Huawei `exc-prod-hw`) — via that cluster's internal gateway,
+`<svc>.internal.paribu.com:50051`:** `user` (user-service), `user-query`, `transaction`,
+`transaction-query`, `notify-query`, `support-api`.
+
+> **Hostname rule worth memorising:** `*.int.paribu.com` = AWS internal gateway,
+> `*.internal.paribu.com` = Huawei internal gateway. A dependency addressed by hostname rather than
+> cluster DNS is a **cross-cloud hop** — latency and failure modes differ.
+
+Public auth host: `https://account.paribu.com` (`MONOSIGN_BASE_URL`).
 
 ## Key Details
 
 - No Kafka — purely a proxy/aggregation layer
-- Uses feature flags (flagd/OpenFeature)
-- Redis for MFA session state
-- bff-client is the same pattern but for mobile (Samaritan)
+- Feature flags via Flipt v2; profiling via Grafana **Alloy** (`alloy.monitoring.svc.cluster.local:4040`)
+- bff-client is the same pattern for mobile (Samaritan); bff-instant-pay is a third, fiat-focused BFF
 
-## Notable Behaviors (2026-06)
+## Notable Behaviors
 
-- **Orderbook gating (E4B-30):** The orderbook endpoint checks market live status before serving data. Pre-launch markets return 403 unless the requesting user has `pre_launch_access=true` in their config-service merged config. This is a per-request config-service lookup (no caching). `marketstatus.Checker` is injected into `MarketHandler` alongside a `configadapter.Client`.
-- **cost-basis dual-auth (EXCH-6876):** The `/conversion/cost-basis` endpoint requires **both** a user JWT and a valid `X-Internal-Token` header. KrakenD forwards both; bff-api validates both before serving.
+- **Orderbook gating (E4B-30):** the orderbook endpoint checks market live status before serving.
+  Pre-launch markets return 403 unless the user has `pre_launch_access=true` in their config-service
+  merged config — a per-request lookup, no caching. `marketstatus.Checker` is injected into
+  `MarketHandler` alongside a `configadapter.Client`.
+- **cost-basis dual-auth (EXCH-6876):** `/conversion/cost-basis` requires **both** a user JWT and a
+  valid `X-Internal-Token`; KrakenD forwards both, bff-api validates both.
+- **Notification inbox repoint (E1B-83):** the web `/v1/notification/*` path now goes through
+  bff-client rather than bff-api's own wiring. bff-api's dark-launch side of that change is done —
+  the flip landed with bff-client v1.3.13 on 2026-08-17 (+33–41 ms measured).
